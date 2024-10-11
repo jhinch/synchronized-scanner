@@ -1,9 +1,9 @@
 package com.github.jhinch.syncscanner;
 
+import org.apache.bcel.Const;
 import org.apache.bcel.classfile.AnnotationDefault;
 import org.apache.bcel.classfile.AnnotationEntry;
 import org.apache.bcel.classfile.Annotations;
-import org.apache.bcel.classfile.Attribute;
 import org.apache.bcel.classfile.BootstrapMethods;
 import org.apache.bcel.classfile.ClassParser;
 import org.apache.bcel.classfile.Code;
@@ -50,6 +50,8 @@ import org.apache.bcel.classfile.StackMapEntry;
 import org.apache.bcel.classfile.Synthetic;
 import org.apache.bcel.classfile.Unknown;
 import org.apache.bcel.classfile.Visitor;
+import org.apache.bcel.generic.InstructionHandle;
+import org.apache.bcel.generic.InstructionList;
 
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
@@ -62,7 +64,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarInputStream;
@@ -78,15 +79,15 @@ public class Main {
         System.out.println("Found " + files.size() + " files");
         System.out.println("Beginning scan...");
         for (Path file : files) {
-            if (file.endsWith(".jar")) {
+            if (file.toString().endsWith(".jar")) {
                 scanJar(file);
-            } else if (file.endsWith(".class")) {
+            } else if (file.toString().endsWith(".class")) {
                 scanClassFile(file);
             } else {
                 System.out.println("ERROR: Unknown file type: " + file);
             }
         }
-
+        System.out.println("Scan complete!");
     }
 
     private static List<Path> collectFiles(String... filenames) throws IOException {
@@ -102,7 +103,7 @@ public class Main {
 
                     @Override
                     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                        if (file.endsWith(".jar") || file.endsWith(".class")) {
+                        if (file.toString().endsWith(".jar") || file.toString().endsWith(".class")) {
                             files.add(file);
                         }
                         return FileVisitResult.CONTINUE;
@@ -127,7 +128,6 @@ public class Main {
         }
         return files;
     }
-
 
     private static void scanJar(Path file) throws IOException {
         try (
@@ -155,10 +155,38 @@ public class Main {
         ClassParser parser = new ClassParser(in, filename);
         Scanner scanner = new Scanner();
         JavaClass javaClass = parser.parse();
-        new DescendingVisitor(javaClass, scanner).visit();
+        DescendingVisitor visitor = new DescendingVisitor(javaClass, scanner);
+        scanner.stack = visitor;
+        visitor.visit();
     }
 
     private static class Scanner implements Visitor {
+
+        private DescendingVisitor stack;
+
+        @Override
+        public void visitMethod(Method obj) {
+            JavaClass javaClass = (JavaClass) stack.predecessor();
+            if (obj.isSynchronized()) {
+
+                System.out.println("synchronized method: " + javaClass.getClassName() + "#" + obj.getName());
+            }
+        }
+
+        @Override
+        public void visitCode(Code obj) {
+            JavaClass javaClass = (JavaClass) stack.predecessor(1);
+            Method method = (Method) stack.predecessor(0);
+            InstructionList instructions = new InstructionList(obj.getCode());
+            for (InstructionHandle instruction : instructions) {
+                if (instruction.getInstruction().getOpcode() == Const.MONITORENTER) {
+                    System.out.println("synchronized block: "
+                            + javaClass.getClassName() + "#" + method.getName()
+                            + " line " + obj.getLineNumberTable().getSourceLine(instruction.getPosition())
+                    );
+                }
+            }
+        }
 
         @Override
         public void visitAnnotation(Annotations obj) {
@@ -176,11 +204,6 @@ public class Main {
 
         @Override
         public void visitBootstrapMethods(BootstrapMethods obj) {
-
-        }
-
-        @Override
-        public void visitCode(Code obj) {
 
         }
 
@@ -337,13 +360,6 @@ public class Main {
         @Override
         public void visitLocalVariableTypeTable(LocalVariableTypeTable obj) {
 
-        }
-
-        @Override
-        public void visitMethod(Method obj) {
-            if (obj.isSynchronized()) {
-                System.out.println(obj + " is synchronized");
-            }
         }
 
         @Override
