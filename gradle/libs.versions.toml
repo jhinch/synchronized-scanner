@@ -1,0 +1,7 @@
+[versions]
+apache-bcel = "6.10.0"
+junit-jupiter = "5.10.2"
+
+[libraries]
+apache-bcel = { module = "org.apache.bcel:bcel", version.ref = "apache-bcel" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }

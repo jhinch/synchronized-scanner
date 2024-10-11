@@ -1,0 +1,2 @@
+rootProject.name = 'synchronized-scanner'
+include('app')
