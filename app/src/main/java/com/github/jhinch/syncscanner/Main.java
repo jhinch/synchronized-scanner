@@ -80,7 +80,7 @@ public class Main {
         System.out.println("Beginning scan...");
         for (Path file : files) {
             if (file.toString().endsWith(".jar")) {
-                scanJar(file);
+                scanJarFile(file);
             } else if (file.toString().endsWith(".class")) {
                 scanClassFile(file);
             } else {
@@ -129,16 +129,22 @@ public class Main {
         return files;
     }
 
-    private static void scanJar(Path file) throws IOException {
+    private static void scanJarFile(Path file) throws IOException {
         try (
                 FileInputStream fileIn = new FileInputStream(file.toFile());
                 JarInputStream jarIn = new JarInputStream(new BufferedInputStream(fileIn))
         ) {
-            JarEntry jarEntry;
-            while ((jarEntry = jarIn.getNextJarEntry()) != null) {
-                if (jarEntry.getName().endsWith(".class")) {
-                    scanClass(jarIn, jarEntry.getName());
-                }
+            scanJar(jarIn);
+        }
+    }
+
+    private static void scanJar(JarInputStream jarIn) throws IOException {
+        JarEntry jarEntry;
+        while ((jarEntry = jarIn.getNextJarEntry()) != null) {
+            if (jarEntry.getName().endsWith(".class")) {
+                scanClass(jarIn, jarEntry.getName());
+            } else if (jarEntry.getName().endsWith(".class")) {
+                scanJar(new JarInputStream(jarIn));
             }
         }
     }
@@ -180,9 +186,10 @@ public class Main {
             InstructionList instructions = new InstructionList(obj.getCode());
             for (InstructionHandle instruction : instructions) {
                 if (instruction.getInstruction().getOpcode() == Const.MONITORENTER) {
+                    LineNumberTable lineNumberTable = obj.getLineNumberTable();
                     System.out.println("synchronized block: "
                             + javaClass.getClassName() + "#" + method.getName()
-                            + " line " + obj.getLineNumberTable().getSourceLine(instruction.getPosition())
+                            + " line " + (lineNumberTable == null ? "unknown" : lineNumberTable.getSourceLine(instruction.getPosition()))
                     );
                 }
             }
